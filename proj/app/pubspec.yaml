@@ -1,0 +1,33 @@
+name: app
+description: 精密工具智能化管理系统 - 移动手持终端 (Flutter Material 3)
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 状态存储与本地 SQLite 数据库
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  path_provider: ^2.1.1
+
+  # 近场局域网通信 HTTP 客户端
+  http: ^1.1.0
+
+  # 视觉增强与补光扫码
+  mobile_scanner: ^7.2.0
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

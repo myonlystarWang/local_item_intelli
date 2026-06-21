@@ -1,0 +1,278 @@
+/* Curated Palette: 深海蓝 (Deep Sea Navy) & 金属金 (Metallic Gold) & 暗炭色 (Dark Charcoal) */
+:root {
+  --bg-dark: #0a0c10;
+  --bg-card: #131722;
+  --bg-card-hover: #1b2130;
+  --border-color: rgba(255, 255, 255, 0.08);
+  
+  --primary: #102a43; /* 深海蓝 */
+  --primary-light: #243b53;
+  --accent-blue: #0088cc;
+  --accent-gold: #d4af37; /* 金属金 */
+  --accent-gold-glow: rgba(212, 175, 55, 0.15);
+  
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.35);
+  
+  --status-in: #10b981; /* 在库 绿色 */
+  --status-out: #f59e0b; /* 离库 橙色 */
+  --status-err: #ef4444; /* 异常/超期 红色 */
+  --status-bg-in: rgba(16, 185, 129, 0.1);
+  --status-bg-out: rgba(245, 158, 11, 0.1);
+  --status-bg-err: rgba(239, 68, 68, 0.1);
+
+  --font-sans: 'Outfit', 'PingFang SC', 'Noto Sans SC', -apple-system, sans-serif;
+  --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 全局滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 总体框架布局 */
+.prototype-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* 顶部标题装饰 */
+.proto-header {
+  background: linear-gradient(135deg, #102a43 0%, #0a0c10 100%);
+  border-bottom: 1px solid var(--border-color);
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.proto-header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.proto-header h1 span {
+  font-size: 11px;
+  background: linear-gradient(90deg, var(--accent-gold), #ffd700);
+  color: #000;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.proto-header .version-tag {
+  color: var(--text-secondary);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  gap: 6px;
+}
+.mode-online {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+.mode-offline {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+/* 演示核心区域，划分为控制面板与双端显示 */
+.main-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  flex: 1;
+  background-color: #0c0f16;
+}
+
+/* 物理世界控制器面板 (左侧固定) */
+.simulation-panel {
+  background-color: #0f121b;
+  border-right: 1px solid var(--border-color);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-sizing: border-box;
+}
+
+.sim-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sim-section h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--accent-gold);
+  padding-left: 8px;
+}
+
+.sim-btn {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: var(--transition-smooth);
+}
+.sim-btn:hover {
+  background-color: var(--bg-card-hover);
+  border-color: rgba(255,255,255,0.2);
+  transform: translateX(2px);
+}
+.sim-btn.active {
+  background: linear-gradient(135deg, var(--primary-light), var(--primary));
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 10px rgba(0, 136, 204, 0.2);
+}
+
+/* 右侧双端展示区域 */
+.devices-arena {
+  display: grid;
+  grid-template-columns: 460px 1fr;
+  gap: 30px;
+  padding: 30px;
+  align-items: start;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.device-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+.device-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding-left: 25px;
+}
+.device-label span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent-blue);
+}
+
+/* 微信/Android设备壳内部自定义重置样式 */
+.android-screen-wrapper {
+  background-color: #0c0f16;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--text-primary);
+}
+
+/* Web 中枢界面内部自定义重置样式 */
+.web-screen-wrapper {
+  background-color: #0d1117;
+  height: 100%;
+  display: flex;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+/* 双端公共UI组件与微动画 */
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+.pulsate {
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 15px rgba(214, 175, 55, 0.4); }
+  100% { transform: scale(1); opacity: 0.9; }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.badge-in { background-color: var(--status-bg-in); color: var(--status-in); }
+.badge-out { background-color: var(--status-bg-out); color: var(--status-out); }
+.badge-err { background-color: var(--status-bg-err); color: var(--status-err); }
+
+/* 下拉框与文本框美化 */
+.custom-input {
+  width: 100%;
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+  transition: var(--transition-smooth);
+}
+.custom-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  background-color: rgba(255, 255, 255, 0.08);
+}
