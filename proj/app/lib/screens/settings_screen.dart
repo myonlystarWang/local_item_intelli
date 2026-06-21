@@ -42,12 +42,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final currentUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.1.100:8080';
     final currentUuid = await LocalDatabase.instance.getSetting('terminal_uuid') ?? 'terminal-handheld-001';
 
-    setState(() {
-      operators = ops.isNotEmpty ? ops : ['张建国', '李志刚', '王超', '赵强'];
-      teams = tms.isNotEmpty ? tms : ['川庆钻探一队', '中原石油三队', '江汉作业五队'];
+    // 进行去重处理，防止后端返回重复字典项导致 Dropdown 报 key 重复崩溃
+    final distinctOps = ops.toSet().toList();
+    final distinctTms = tms.toSet().toList();
 
-      selectedName = currentName ?? (operators.isNotEmpty ? operators.first : null);
-      selectedTeam = currentTeam ?? (teams.isNotEmpty ? teams.first : null);
+    setState(() {
+      operators = distinctOps.isNotEmpty ? distinctOps : ['张建国', '李志刚', '王超', '赵强'];
+      teams = distinctTms.isNotEmpty ? distinctTms : ['川庆钻探一队', '中原石油三队', '江汉作业五队'];
+
+      // 安全边界处理：确保初始选择的值在选项列表中，防止 zero 匹配红屏
+      selectedName = currentName;
+      if (selectedName == null || !operators.contains(selectedName)) {
+        selectedName = operators.isNotEmpty ? operators.first : null;
+      }
+
+      selectedTeam = currentTeam;
+      if (selectedTeam == null || !teams.contains(selectedTeam)) {
+        selectedTeam = teams.isNotEmpty ? teams.first : null;
+      }
       
       _urlController.text = currentUrl;
       _uuidController.text = currentUuid;
