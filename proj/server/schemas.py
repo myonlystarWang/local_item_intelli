@@ -10,7 +10,7 @@ class DictionaryBase(BaseModel):
     dict_value: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class DictionaryResponse(BaseModel):
     wellbores: List[str]
@@ -33,7 +33,7 @@ class AccessoryCreate(AccessoryBase):
 
 class AccessoryResponse(AccessoryBase):
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class AccessoryAdjustment(BaseModel):
     barcode: str
@@ -53,7 +53,7 @@ class HistoryResponse(HistoryBase):
     tool_code: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # ─────────────────────────────────────────────────────────────
 # 精密工具相关 Schema
@@ -77,7 +77,7 @@ class ToolResponse(ToolBase):
     histories: List[HistoryResponse] = []
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # ─────────────────────────────────────────────────────────────
 # 近场数据同步协议 Schema (API 契约)
