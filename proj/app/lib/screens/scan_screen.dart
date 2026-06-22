@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../db/local_db.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -10,9 +11,14 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateMixin {
-  final MobileScannerController controller = MobileScannerController();
+  final MobileScannerController controller = MobileScannerController(
+    formats: const [BarcodeFormat.all],
+    detectionSpeed: DetectionSpeed.normal,
+    detectionTimeoutMs: 250,
+  );
   bool _hasScanned = false;
   bool _isTorchOn = false;
+  List<String> _codeOptions = [];
   late AnimationController _animationController;
   late Animation<double> _animation;
 
@@ -24,6 +30,7 @@ class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateM
       vsync: this,
     )..repeat(reverse: true);
     _animation = Tween<double>(begin: 0.0, end: 1.0).animate(_animationController);
+    _loadCodeOptions();
   }
 
   @override
@@ -46,8 +53,25 @@ class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<void> _loadCodeOptions() async {
+    final tools = await LocalDatabase.instance.getTools();
+    final accessories = await LocalDatabase.instance.getAccessories();
+    final codes = <String>{
+      ...tools.map((item) => '${item['code']}'),
+      ...accessories.map((item) => '${item['barcode']}'),
+    }.where((code) => code.trim().isNotEmpty).toList()
+      ..sort();
+
+    if (mounted) {
+      setState(() {
+        _codeOptions = codes;
+      });
+    }
+  }
+
   void _showManualInput(BuildContext context) {
-    final textController = TextEditingController();
+    TextEditingController? inputController;
+    String selectedCode = '';
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -68,25 +92,78 @@ class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateM
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '如因刻码磨损无法识别，请输入正确的物理编码：',
+              '如因刻码磨损无法识别，请输入或点选本地已同步编码：',
               style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: textController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: '例如: TL-MT-056-K',
-                hintStyle: TextStyle(color: Colors.white30),
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Color(0xFF0088CC)),
-                ),
-              ),
-              autofocus: true,
+            Autocomplete<String>(
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                final keyword = textEditingValue.text.trim().toLowerCase();
+                final source = keyword.isEmpty
+                    ? _codeOptions
+                    : _codeOptions.where((code) => code.toLowerCase().contains(keyword)).toList();
+                return source.take(12);
+              },
+              onSelected: (value) {
+                selectedCode = value;
+              },
+              fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+                inputController = textController;
+                return TextField(
+                  controller: textController,
+                  focusNode: focusNode,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: '例如: TL-MT-056-K 或 ACC-RING-001',
+                    hintStyle: TextStyle(color: Colors.white30),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Color(0xFF0088CC)),
+                    ),
+                  ),
+                  autofocus: true,
+                  onChanged: (value) {
+                    selectedCode = value;
+                  },
+                  onSubmitted: (_) => onFieldSubmitted(),
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    color: const Color(0xFF182030),
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(8),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220, maxWidth: 320),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        itemCount: options.length,
+                        itemBuilder: (context, index) {
+                          final option = options.elementAt(index);
+                          return ListTile(
+                            dense: true,
+                            title: Text(option, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                            onTap: () => onSelected(option),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
+            if (_codeOptions.isEmpty) ...[
+              const SizedBox(height: 8),
+              const Text(
+                '本地暂无同步编码候选，可直接手工录入。',
+                style: TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -96,7 +173,7 @@ class _ScanScreenState extends State<ScanScreen> with SingleTickerProviderStateM
           ),
           ElevatedButton(
             onPressed: () {
-              final code = textController.text.trim();
+              final code = (inputController?.text ?? selectedCode).trim();
               if (code.isNotEmpty) {
                 Navigator.pop(ctx); // 关闭 Dialog
                 if (!_hasScanned) {

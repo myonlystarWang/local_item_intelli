@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Monitor, Document } from '@element-plus/icons-vue'
+import { Box, Document, Monitor, Setting } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,6 +23,16 @@ watch(
 const handleSelect = (key: string) => {
   router.push(key)
 }
+
+const pageTitle = computed(() => {
+  const titles: Record<string, string> = {
+    '/dashboard': '监控驾驶大盘',
+    '/lifecycle': '寿命生命周期档案',
+    '/accessories': '配件库存台账',
+    '/dictionaries': '基础数据维护'
+  }
+  return titles[route.path] || '监控驾驶大盘'
+})
 </script>
 
 <template>
@@ -49,6 +59,14 @@ const handleSelect = (key: string) => {
           <el-icon><Document /></el-icon>
           <span>寿命生命周期档案</span>
         </el-menu-item>
+        <el-menu-item index="/accessories">
+          <el-icon><Box /></el-icon>
+          <span>配件库存台账</span>
+        </el-menu-item>
+        <el-menu-item index="/dictionaries">
+          <el-icon><Setting /></el-icon>
+          <span>基础数据维护</span>
+        </el-menu-item>
       </el-menu>
       
       <div class="aside-footer">
@@ -59,7 +77,7 @@ const handleSelect = (key: string) => {
     <el-container>
       <el-header class="app-header">
         <div class="header-left">
-          <h2>{{ route.path === '/lifecycle' ? '寿命生命周期档案' : '监控驾驶大盘' }}</h2>
+          <h2>{{ pageTitle }}</h2>
         </div>
         <div class="header-right">
           <div class="system-time">

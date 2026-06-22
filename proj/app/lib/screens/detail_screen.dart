@@ -123,14 +123,19 @@ class _DetailScreenState extends State<DetailScreen> {
       'type': 'CHANGE_LOC',
       'toolCode': widget.barcode,
       'operator': selectedOperator ?? '当前责任人',
-      'detail': { 'wellbore': selectedWellbore! }
+      'detail': {
+        'wellbore': selectedWellbore!,
+        'team': selectedTeam ?? '未知大队',
+      }
     };
 
     final db = await LocalDatabase.instance.database;
     await db.update(
       'tools',
       {
+        'status': '地点变更',
         'location': selectedWellbore!,
+        'operator': selectedOperator ?? '当前责任人',
         'last_update_time': timestamp,
       },
       where: 'code = ?',
@@ -323,6 +328,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
+                  menuMaxHeight: 320,
                   initialValue: selectedWellbore,
                   decoration: const InputDecoration(labelText: '目标作业井号'),
                   items: wellbores.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
@@ -360,7 +366,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
               ],
 
-              if (toolData!['status'] == '离库') ...[
+              if (toolData!['status'] == '离库' || toolData!['status'] == '地点变更') ...[
                 // 地点变更
                 Card(
                   child: Padding(
@@ -374,6 +380,7 @@ class _DetailScreenState extends State<DetailScreen> {
                           children: [
                             Expanded(
                               child: DropdownButtonFormField<String>(
+                                menuMaxHeight: 320,
                                 initialValue: selectedWellbore,
                                 decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 10)),
                                 items: wellbores.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),

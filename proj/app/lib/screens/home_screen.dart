@@ -233,6 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         leading: const Icon(Icons.build, size: 20, color: Color(0xFF0088CC)),
                         title: Text('${item['code']} (${item['name']})', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                         subtitle: Text('位置: ${item['location']} | 寿命: ${item['use_count']}/${item['lifespan_limit']}次', style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                        onTap: () => _onBarcodeScanned('${item['code']}'),
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(

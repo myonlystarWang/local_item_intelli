@@ -19,6 +19,13 @@ def process_offline_sync(db: Session, sync_data: schemas.SyncRequest) -> schemas
     """
     sorted_logs = sorted(sync_data.logs, key=lambda x: x.timestamp)
     report = []
+
+    if not sorted_logs:
+        report.append(schemas.SyncLogResult(
+            type="success",
+            text=f"终端 [{sync_data.terminal_uuid}] 完成近场握手，无待上传离线操作日志。",
+            time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
     
     for log in sorted_logs:
         tool_code = log.tool_code
@@ -80,14 +87,24 @@ def process_offline_sync(db: Session, sync_data: schemas.SyncRequest) -> schemas
 
         # 3. 工况地点变更 (CHANGE_LOC)
         elif log.type == "CHANGE_LOC":
+            if db_tool.status not in ("离库", "地点变更"):
+                report.append(schemas.SyncLogResult(
+                    type="conflict",
+                    text=f"【状态锁拦截】工具 [{tool_code}] 当前状态为 [{db_tool.status}]，不允许执行井场地点变更。该条离线日志已忽略。",
+                    time=log.time_str
+                ))
+                continue
+
+            db_tool.status = "地点变更"
             db_tool.location = log.detail.wellbore or "未知井号"
+            db_tool.operator = log.operator
             db_tool.last_update_time = log_time
             
             history_entry = models.ToolHistory(
                 tool_code=tool_code,
                 timestamp=log_time,
                 type="工况变更",
-                detail=f"[近场同步] 现场调拨更新地点至井号 [{log.detail.wellbore}]",
+                detail=f"[近场同步] 现场调拨更新地点至井号 [{log.detail.wellbore}]，班组队号: [{log.detail.team or '未记录'}]",
                 operator=log.operator
             )
             db.add(history_entry)
@@ -100,6 +117,14 @@ def process_offline_sync(db: Session, sync_data: schemas.SyncRequest) -> schemas
 
         # 4. 维保归库配件核销 (MAINTAIN)
         elif log.type == "MAINTAIN":
+            if db_tool.status not in ("离库", "地点变更"):
+                report.append(schemas.SyncLogResult(
+                    type="conflict",
+                    text=f"【状态锁拦截】工具 [{tool_code}] 当前状态为 [{db_tool.status}]，不允许直接执行归库保养。该条离线日志已忽略。",
+                    time=log.time_str
+                ))
+                continue
+
             consumables = log.detail.consumables or []
             
             # 库存校验
@@ -129,6 +154,7 @@ def process_offline_sync(db: Session, sync_data: schemas.SyncRequest) -> schemas
             db_tool.status = "在库"
             db_tool.use_count += 1
             db_tool.location = "基地总库"
+            db_tool.operator = log.operator
             db_tool.checkout_time = None
             db_tool.last_update_time = log_time
             
@@ -148,15 +174,30 @@ def process_offline_sync(db: Session, sync_data: schemas.SyncRequest) -> schemas
                 time=log.time_str
             ))
             
+    for item in report:
+        db.add(models.SyncLog(
+            terminal_uuid=sync_data.terminal_uuid,
+            timestamp=parse_time(item.time),
+            type=item.type,
+            text=item.text,
+            source_time=item.time
+        ))
+
     db.commit()
     
     # 获取全量数据进行返回，供 App 覆盖本地 SQLite，保证双端绝对一致
     all_tools = db.query(models.Tool).all()
     all_acc = db.query(models.Accessory).all()
+    updated_dicts = {
+        "wellbores": [r.dict_value for r in db.query(models.Dictionary).filter_by(dict_type="wellbore").all()],
+        "operators": [r.dict_value for r in db.query(models.Dictionary).filter_by(dict_type="operator").all()],
+        "teams": [r.dict_value for r in db.query(models.Dictionary).filter_by(dict_type="team").all()],
+    }
     
     return schemas.SyncResponse(
         status="success",
         report=report,
         updated_tools=all_tools,
-        updated_accessories=all_acc
+        updated_accessories=all_acc,
+        updated_dicts=updated_dicts
     )

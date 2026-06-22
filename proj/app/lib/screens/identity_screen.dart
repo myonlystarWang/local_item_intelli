@@ -128,6 +128,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                       // 姓名选择
                       DropdownButtonFormField<String>(
                         dropdownColor: const Color(0xFF131722),
+                        menuMaxHeight: 320,
                         initialValue: selectedName,
                         decoration: const InputDecoration(
                           labelText: '操作人姓名',
@@ -150,6 +151,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                       // 所属大队选择
                       DropdownButtonFormField<String>(
                         dropdownColor: const Color(0xFF131722),
+                        menuMaxHeight: 320,
                         initialValue: selectedTeam,
                         decoration: const InputDecoration(
                           labelText: '所属大队/队组',

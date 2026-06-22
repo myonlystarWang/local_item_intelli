@@ -92,7 +92,8 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, onUnmounted } from 'vue';
-import { api, Tool, Accessory, SyncLog } from '../api';
+import { api } from '../api';
+import type { Tool, Accessory, SyncLog } from '../api';
 
 export default defineComponent({
   name: 'Dashboard',
@@ -117,14 +118,14 @@ export default defineComponent({
     const fetchData = async () => {
       tools.value = await api.getTools();
       accessories.value = await api.getAccessories();
-      syncLogs.value = api.getMockSyncLogs();
+      syncLogs.value = await api.getSyncLogs();
       updateKPIs();
     };
 
     const updateKPIs = () => {
       const total = tools.value.length;
       const inStock = tools.value.filter(t => t.status === '在库').length;
-      const outStock = tools.value.filter(t => t.status === '离库').length;
+      const outStock = tools.value.filter(t => t.status === '离库' || t.status === '地点变更').length;
       const alertTools = tools.value.filter(t => t.use_count >= t.lifespan_limit || isOverdue(t)).length;
       const lowStockAccs = accessories.value.filter(a => a.current_stock < a.safety_stock).length;
 

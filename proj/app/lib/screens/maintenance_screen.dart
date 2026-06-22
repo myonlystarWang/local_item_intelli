@@ -210,6 +210,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                     ),
                     const SizedBox(height: 5),
                     DropdownButtonFormField<String>(
+                      menuMaxHeight: 320,
                       initialValue: selectedAccessoryBarcode,
                       decoration: const InputDecoration(labelText: '选择配件目录'),
                       items: accessories.map<DropdownMenuItem<String>>((a) {

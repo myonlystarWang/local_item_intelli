@@ -39,7 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // 加载当前设置
     final currentName = await LocalDatabase.instance.getSetting('operator_name');
     final currentTeam = await LocalDatabase.instance.getSetting('operator_team');
-    final currentUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.1.100:8080';
+    final currentUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.120.107:8000';
     final currentUuid = await LocalDatabase.instance.getSetting('terminal_uuid') ?? 'terminal-handheld-001';
 
     // 进行去重处理，防止后端返回重复字典项导致 Dropdown 报 key 重复崩溃
@@ -135,6 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     DropdownButtonFormField<String>(
                       dropdownColor: const Color(0xFF131722),
+                      menuMaxHeight: 320,
                       initialValue: selectedName,
                       decoration: const InputDecoration(labelText: '当前操作人'),
                       style: const TextStyle(color: Colors.white, fontSize: 13),
@@ -144,6 +145,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       dropdownColor: const Color(0xFF131722),
+                      menuMaxHeight: 320,
                       initialValue: selectedTeam,
                       decoration: const InputDecoration(labelText: '所属作业大队'),
                       style: const TextStyle(color: Colors.white, fontSize: 13),
@@ -172,7 +174,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                       decoration: const InputDecoration(
                         labelText: '中枢服务器 API 地址',
-                        hintText: 'http://192.168.1.100:8080',
+                        hintText: 'http://192.168.120.107:8000',
                       ),
                       keyboardType: TextInputType.url,
                     ),

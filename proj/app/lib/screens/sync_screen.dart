@@ -64,7 +64,8 @@ class _SyncScreenState extends State<SyncScreen> {
       };
 
       final serverUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.120.107:8000';
-      final cleanUrl = serverUrl.endsWith('/sync') ? serverUrl : '$serverUrl/sync';
+      final cleanBase = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+      final cleanUrl = cleanBase.endsWith('/sync') ? cleanBase : '$cleanBase/sync';
       final url = Uri.parse(cleanUrl);
 
       final response = await http.post(
@@ -131,33 +132,8 @@ class _SyncScreenState extends State<SyncScreen> {
       setState(() {
         isSyncing = false;
       });
-      // 在模拟/演示模式下，由于局域网未连接真实服务端，我们执行“模拟成功同步对齐”以保证演示顺畅
-      _executeFallbackMockSync();
+      _showErrorDialog('同步失败：无法连接库房中枢或接口返回异常。待同步日志已保留，请检查服务器地址与局域网连接后重试。\n\n错误详情：$e');
     }
-  }
-
-  // 近场局域网模拟同步逻辑 (无真实服务端连接时的优雅降级模拟)
-  Future<void> _executeFallbackMockSync() async {
-    setState(() {
-      isSyncing = true;
-    });
-
-    await Future.delayed(const Duration(seconds: 1));
-
-    // 清空本地离线待同步记录
-    final db = await LocalDatabase.instance.database;
-    await db.delete('local_logs');
-
-    setState(() {
-      pendingLogs = [];
-      isSyncing = false;
-      serverReport = [
-        {'type': 'success', 'text': '【模拟对齐】本地待上传离线操作包已与库房集中校验节点合并。', 'time': '刚刚'},
-        {'type': 'success', 'text': '零配件全局水位与工具使用寿命已对齐。', 'time': '刚刚'}
-      ];
-    });
-
-    _showSuccessDialog('【近场同步】模拟同步与校验合并成功！本地账目已与库房主账对齐。');
   }
 
   void _showErrorDialog(String msg) {

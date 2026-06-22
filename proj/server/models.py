@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from database import Base
@@ -16,7 +17,12 @@ class Tool(Base):
     last_update_time = Column(DateTime, nullable=False)
     checkout_time = Column(DateTime, nullable=True)
     
-    histories = relationship("ToolHistory", back_populates="tool", cascade="all, delete-orphan")
+    histories = relationship(
+        "ToolHistory",
+        back_populates="tool",
+        cascade="all, delete-orphan",
+        order_by="ToolHistory.timestamp.desc()",
+    )
 
 class Accessory(Base):
     __tablename__ = "accessories"
@@ -46,3 +52,13 @@ class Dictionary(Base):
     id = Column(Integer, primary_key=True, index=True)
     dict_type = Column(String(30), nullable=False)  # wellbore, operator, team
     dict_value = Column(String(100), nullable=False)
+
+class SyncLog(Base):
+    __tablename__ = "sync_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    terminal_uuid = Column(String(100), nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+    type = Column(String(20), nullable=False)  # success, conflict, error
+    text = Column(Text, nullable=False)
+    source_time = Column(String(50), nullable=True)

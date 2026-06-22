@@ -215,7 +215,8 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, watch } from 'vue';
-import { api, Tool, ToolHistory, Accessory } from '../api';
+import { api } from '../api';
+import type { Tool, ToolHistory, Accessory } from '../api';
 
 export default defineComponent({
   name: 'Lifecycle',
@@ -340,8 +341,9 @@ export default defineComponent({
         alert('物理识别刻码不能为空！');
         return;
       }
+      const createdCode = newTool.value.code;
       await api.createTool({
-        code: newTool.value.code,
+        code: createdCode,
         name: newTool.value.name,
         model: newTool.value.model || '通用型',
         lifespan_limit: newTool.value.lifespanLimit,
@@ -350,7 +352,7 @@ export default defineComponent({
       showCreate.value = false;
       newTool.value = { code: '', name: '电动坐封工具', model: '', lifespanLimit: 30 };
       await fetchData();
-      selectedCode.value = newTool.value.code;
+      selectedCode.value = createdCode;
     };
 
     const submitAddWellbore = async () => {

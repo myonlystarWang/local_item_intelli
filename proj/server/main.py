@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -94,6 +94,70 @@ def read_dictionaries(db: Session = Depends(get_db)):
     teams = [r.dict_value for r in db.query(models.Dictionary).filter_by(dict_type="team").all()]
     return {"wellbores": wellbores, "operators": operators, "teams": teams}
 
+@app.get("/dictionaries/items", response_model=List[schemas.DictionaryItemResponse])
+def read_dictionary_items(db: Session = Depends(get_db)):
+    """获取基础字典台账明细，供 Web 端维护井号、人员、大队。"""
+    return (
+        db.query(models.Dictionary)
+        .order_by(models.Dictionary.dict_type.asc(), models.Dictionary.dict_value.asc())
+        .all()
+    )
+
+@app.post("/dictionaries/items", response_model=schemas.DictionaryItemResponse)
+def create_dictionary_item(item: schemas.DictionaryBase, db: Session = Depends(get_db)):
+    """新增基础字典项。"""
+    if item.dict_type not in {"wellbore", "operator", "team"}:
+        raise HTTPException(status_code=400, detail="字典类型仅支持 wellbore/operator/team")
+
+    db_exist = (
+        db.query(models.Dictionary)
+        .filter_by(dict_type=item.dict_type, dict_value=item.dict_value)
+        .first()
+    )
+    if db_exist:
+        raise HTTPException(status_code=400, detail="该字典项已存在")
+
+    created = models.Dictionary(dict_type=item.dict_type, dict_value=item.dict_value)
+    db.add(created)
+    db.commit()
+    db.refresh(created)
+    return created
+
+@app.put("/dictionaries/items/{item_id}", response_model=schemas.DictionaryItemResponse)
+def update_dictionary_item(item_id: int, item: schemas.DictionaryUpdate, db: Session = Depends(get_db)):
+    """修改基础字典项名称。"""
+    db_item = db.query(models.Dictionary).filter_by(id=item_id).first()
+    if not db_item:
+        raise HTTPException(status_code=404, detail="未找到该字典项")
+
+    db_exist = (
+        db.query(models.Dictionary)
+        .filter(
+            models.Dictionary.id != item_id,
+            models.Dictionary.dict_type == db_item.dict_type,
+            models.Dictionary.dict_value == item.dict_value,
+        )
+        .first()
+    )
+    if db_exist:
+        raise HTTPException(status_code=400, detail="同类型字典中已存在该值")
+
+    db_item.dict_value = item.dict_value
+    db.commit()
+    db.refresh(db_item)
+    return db_item
+
+@app.delete("/dictionaries/items/{item_id}")
+def delete_dictionary_item(item_id: int, db: Session = Depends(get_db)):
+    """删除基础字典项。"""
+    db_item = db.query(models.Dictionary).filter_by(id=item_id).first()
+    if not db_item:
+        raise HTTPException(status_code=404, detail="未找到该字典项")
+
+    db.delete(db_item)
+    db.commit()
+    return {"message": "字典项已删除"}
+
 @app.post("/dictionaries/wellbores")
 def add_wellbore_dictionary(item: schemas.DictionaryBase, db: Session = Depends(get_db)):
     """库管员在管理端新增目标作业井号字典。"""
@@ -177,3 +241,13 @@ def adjust_accessory_stock(item: schemas.AccessoryAdjustment, db: Session = Depe
 def sync_offline_data(sync_data: schemas.SyncRequest, db: Session = Depends(get_db)):
     """近场握手数据同步接口：接收终端打包离线日志，进行时间戳及状态锁对齐合并，并反馈最新总账字典数据。"""
     return sync.process_offline_sync(db, sync_data)
+
+@app.get("/sync-logs", response_model=List[schemas.SyncLogResponse])
+def read_sync_logs(limit: int = Query(20, ge=1, le=200), db: Session = Depends(get_db)):
+    """获取真实局域网同步校验日志，供 Web 端 Dashboard 展示。"""
+    return (
+        db.query(models.SyncLog)
+        .order_by(models.SyncLog.timestamp.desc(), models.SyncLog.id.desc())
+        .limit(limit)
+        .all()
+    )

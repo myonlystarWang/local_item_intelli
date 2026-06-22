@@ -35,9 +35,19 @@ export interface ToolHistory {
 }
 
 export interface SyncLog {
+  id?: number
+  terminal_uuid?: string
   type: string
   time: string
   text: string
+  timestamp?: string
+  source_time?: string
+}
+
+export interface DictionaryItem {
+  id: number
+  dict_type: 'wellbore' | 'operator' | 'team'
+  dict_value: string
 }
 
 export const MOCK_DATA = {
@@ -66,7 +76,20 @@ export const MOCK_DATA = {
   syncLogs: [
     { type: 'success', time: '14:20:00', text: '工具 [TL-BG-112-B] 归库保养对齐成功。累计使用寿命刷新为 28次。' },
     { type: 'success', time: '11:30:00', text: '工具 [TL-BG-203-A] 领用出库对齐成功，去往 [川科1井]。' }
-  ] as SyncLog[]
+  ] as SyncLog[],
+  dictionaryItems: [
+    { id: 1, dict_type: 'wellbore', dict_value: '川科1井' },
+    { id: 2, dict_type: 'wellbore', dict_value: '深地塔科1井' },
+    { id: 3, dict_type: 'wellbore', dict_value: '威页23-4井' },
+    { id: 4, dict_type: 'wellbore', dict_value: '大庆102井' },
+    { id: 5, dict_type: 'operator', dict_value: '张建国' },
+    { id: 6, dict_type: 'operator', dict_value: '李志刚' },
+    { id: 7, dict_type: 'operator', dict_value: '王超' },
+    { id: 8, dict_type: 'operator', dict_value: '赵强' },
+    { id: 9, dict_type: 'team', dict_value: '川庆钻探一队' },
+    { id: 10, dict_type: 'team', dict_value: '中原石油三队' },
+    { id: 11, dict_type: 'team', dict_value: '江汉作业五队' }
+  ] as DictionaryItem[]
 }
 
 const localState = { ...MOCK_DATA }
@@ -94,6 +117,55 @@ export const api = {
         localState.wellbores.push(wellbore)
       }
     }
+  },
+
+  async getDictionaryItems() {
+    try {
+      const res = await axios.get(`${API_BASE}/dictionaries/items`)
+      localState.dictionaryItems = res.data
+      localState.wellbores = res.data.filter((d: DictionaryItem) => d.dict_type === 'wellbore').map((d: DictionaryItem) => d.dict_value)
+      localState.operators = res.data.filter((d: DictionaryItem) => d.dict_type === 'operator').map((d: DictionaryItem) => d.dict_value)
+      localState.teams = res.data.filter((d: DictionaryItem) => d.dict_type === 'team').map((d: DictionaryItem) => d.dict_value)
+      return res.data as DictionaryItem[]
+    } catch {
+      console.warn("API Error: getDictionaryItems. Fallback to mock.")
+      return localState.dictionaryItems
+    }
+  },
+
+  async createDictionaryItem(item: { dict_type: DictionaryItem['dict_type']; dict_value: string }) {
+    try {
+      const res = await axios.post(`${API_BASE}/dictionaries/items`, item)
+      return res.data as DictionaryItem
+    } catch {
+      console.warn("API Error: createDictionaryItem. Fallback to mock.")
+      const exists = localState.dictionaryItems.some(d => d.dict_type === item.dict_type && d.dict_value === item.dict_value)
+      if (exists) return localState.dictionaryItems.find(d => d.dict_type === item.dict_type && d.dict_value === item.dict_value)
+      const created = { id: Date.now(), ...item } as DictionaryItem
+      localState.dictionaryItems.push(created)
+      return created
+    }
+  },
+
+  async updateDictionaryItem(id: number, dictValue: string) {
+    try {
+      const res = await axios.put(`${API_BASE}/dictionaries/items/${id}`, { dict_value: dictValue })
+      return res.data as DictionaryItem
+    } catch {
+      console.warn("API Error: updateDictionaryItem. Fallback to mock.")
+      const target = localState.dictionaryItems.find(d => d.id === id)
+      if (target) target.dict_value = dictValue
+      return target
+    }
+  },
+
+  async deleteDictionaryItem(id: number) {
+    try {
+      await axios.delete(`${API_BASE}/dictionaries/items/${id}`)
+    } catch {
+      console.warn("API Error: deleteDictionaryItem. Fallback to mock.")
+    }
+    localState.dictionaryItems = localState.dictionaryItems.filter(d => d.id !== id)
   },
 
   async getTools() {
@@ -183,10 +255,13 @@ export const api = {
       const res = await axios.get(`${API_BASE}/tools`)
       const tool = res.data.find((t: any) => t.code === toolCode)
       if (tool && tool.histories) {
-        return tool.histories.map((h: any) => ({
-          ...h,
-          timestamp: new Date(h.timestamp).toLocaleString()
-        }))
+        return tool.histories
+          .slice()
+          .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .map((h: any) => ({
+            ...h,
+            timestamp: new Date(h.timestamp).toLocaleString()
+          }))
       }
       return []
     } catch {
@@ -197,7 +272,23 @@ export const api = {
     }
   },
 
-  getMockSyncLogs() {
-    return localState.syncLogs
+  async getSyncLogs() {
+    try {
+      const res = await axios.get(`${API_BASE}/sync-logs?limit=20`)
+      const formatted = res.data.map((item: any) => ({
+        id: item.id,
+        terminal_uuid: item.terminal_uuid,
+        type: item.type,
+        text: item.text,
+        timestamp: item.timestamp,
+        source_time: item.source_time,
+        time: item.source_time || (item.timestamp ? new Date(item.timestamp).toLocaleString() : '')
+      }))
+      localState.syncLogs = formatted
+      return formatted
+    } catch {
+      console.warn("API Error: getSyncLogs. Fallback to mock.")
+      return localState.syncLogs
+    }
   }
 }

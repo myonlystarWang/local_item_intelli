@@ -12,6 +12,15 @@ class DictionaryBase(BaseModel):
     class Config:
         from_attributes = True
 
+class DictionaryUpdate(BaseModel):
+    dict_value: str
+
+class DictionaryItemResponse(DictionaryBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
 class DictionaryResponse(BaseModel):
     wellbores: List[str]
     operators: List[str]
@@ -74,7 +83,18 @@ class ToolResponse(ToolBase):
     operator: str
     last_update_time: datetime
     checkout_time: Optional[datetime] = None
-    histories: List[HistoryResponse] = []
+    histories: List[HistoryResponse] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+
+class SyncLogResponse(BaseModel):
+    id: int
+    terminal_uuid: str
+    timestamp: datetime
+    type: str
+    text: str
+    source_time: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -117,3 +137,4 @@ class SyncResponse(BaseModel):
     report: List[SyncLogResult]
     updated_tools: List[ToolResponse]
     updated_accessories: List[AccessoryResponse]
+    updated_dicts: DictionaryResponse
