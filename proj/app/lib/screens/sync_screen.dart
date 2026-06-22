@@ -203,37 +203,38 @@ class _SyncScreenState extends State<SyncScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 日志预览区
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('待上报离线记录：', style: TextStyle(fontSize: 12, color: Colors.white54)),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: pendingLogs.isEmpty
-                      ? const Center(child: Text('无待同步的操作日志', style: TextStyle(fontSize: 12, color: Colors.white30)))
-                      : ListView.builder(
-                          itemCount: pendingLogs.length,
-                          itemBuilder: (context, index) {
-                            final item = pendingLogs[index];
-                            return ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.history_edu, size: 20),
-                              title: Text('${item['tool_code']} [${item['type']}]'),
-                              subtitle: Text('操作时间: ${item['time_str']} | 责任人: ${item['operator']}'),
-                            );
-                          },
-                        ),
-                  ),
-                ],
+            // 待同步记录区（仅在有待同步数据或报告为空时展示）
+            if (pendingLogs.isNotEmpty || serverReport.isEmpty)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('待上报离线记录：', style: TextStyle(fontSize: 12, color: Colors.white54)),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: pendingLogs.isEmpty
+                        ? const Center(child: Text('无待同步的操作日志', style: TextStyle(fontSize: 12, color: Colors.white30)))
+                        : ListView.builder(
+                            itemCount: pendingLogs.length,
+                            itemBuilder: (context, index) {
+                              final item = pendingLogs[index];
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.history_edu, size: 20),
+                                title: Text('${item['tool_code']} [${item['type']}]'),
+                                subtitle: Text('操作时间: ${item['time_str']} | 责任人: ${item['operator']}'),
+                              );
+                            },
+                          ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
             // 对齐日志报告展示
             if (serverReport.isNotEmpty) ...[
-              const Divider(height: 30),
+              if (pendingLogs.isNotEmpty) const Divider(height: 20) else const SizedBox(height: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:http/http.dart' as http;
 import '../db/local_db.dart';
 import 'detail_screen.dart';
 import 'sync_screen.dart';
@@ -13,7 +15,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool isOnline = true; // 模拟物理网络开关
+  bool isOnline = false; // 初始假设为离线，通过心跳动态确认
+  Timer? _heartbeatTimer;
   int pendingSyncCount = 0;
   List<Map<String, dynamic>> toolsList = [];
   String operatorName = '';
@@ -23,6 +26,42 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadLocalData();
+    _startHeartbeat();
+  }
+
+  @override
+  void dispose() {
+    _heartbeatTimer?.cancel();
+    super.dispose();
+  }
+
+  // 局域网在线心跳定时轮询
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    // 立即执行一次
+    _checkConnectivity();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _checkConnectivity();
+    });
+  }
+
+  Future<void> _checkConnectivity() async {
+    final serverUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.120.107:8000';
+    try {
+      final response = await http.get(Uri.parse('$serverUrl/tools')).timeout(const Duration(seconds: 2));
+      final newStatus = response.statusCode == 200;
+      if (isOnline != newStatus) {
+        setState(() {
+          isOnline = newStatus;
+        });
+      }
+    } catch (_) {
+      if (isOnline != false) {
+        setState(() {
+          isOnline = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadLocalData() async {
@@ -38,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // 模拟摄像头扫码成功事件，跳转到详情
+  // 模拟扫码识别进入详情页 (可操作模式)
   void _onBarcodeScanned(String barcode) {
     Navigator.push(
       context,
@@ -46,6 +85,21 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context) => DetailScreen(
           barcode: barcode,
           isOnline: isOnline,
+          isReadOnly: false,
+        ),
+      ),
+    ).then((_) => _loadLocalData());
+  }
+
+  // 资产预览项点击进入详情页 (只读模式)
+  void _onAssetItemClicked(String barcode) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DetailScreen(
+          barcode: barcode,
+          isOnline: isOnline,
+          isReadOnly: true,
         ),
       ),
     ).then((_) => _loadLocalData());
@@ -76,22 +130,27 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
-          // 物理网络模拟开关
-          IconButton(
-            icon: Icon(
-              isOnline ? Icons.wifi : Icons.wifi_off,
-              color: isOnline ? Colors.green : Colors.red,
+          // 局域网网络状态静态指示器（不可点击，心跳自动切换）
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Row(
+              children: [
+                Icon(
+                  isOnline ? Icons.wifi : Icons.wifi_off,
+                  color: isOnline ? Colors.green : Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isOnline ? '局域网在线' : '离线状态',
+                  style: TextStyle(
+                    color: isOnline ? Colors.green : Colors.red,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-            tooltip: isOnline ? '已连接局域网 Wi-Fi' : '断网离线模式',
-            onPressed: () {
-              setState(() {
-                isOnline = !isOnline;
-              });
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(isOnline ? '已接入库房局域网信道' : '已进入井口无网脱机状态'),
-                duration: const Duration(seconds: 1),
-              ));
-            },
           ),
           // 系统配置页面入口
           IconButton(
@@ -102,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(builder: (context) => const SettingsScreen()),
               );
-              if (updated == true && mounted) {
+              if (updated == true) {
                 _loadLocalData();
               }
             },
@@ -110,145 +169,177 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. 智能离线扫描大卡片
-            GestureDetector(
-              onTap: () async {
-                final barcode = await Navigator.push<String>(
-                  context,
-                  MaterialPageRoute(builder: (context) => const ScanScreen()),
-                );
-                if (barcode != null && mounted) {
-                  _onBarcodeScanned(barcode);
-                }
-              },
-              child: Card(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF102A43), Color(0xFF243B53)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+        padding: const EdgeInsets.all(16.0),
+        child: CustomScrollView(
+          slivers: [
+            // 1. 横向排布的小巧操作按钮 Row
+            SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  // 扫描按钮
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () async {
+                        final barcode = await Navigator.push<String>(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ScanScreen()),
+                        );
+                        if (barcode != null && mounted) {
+                          _onBarcodeScanned(barcode);
+                        }
+                      },
+                      child: Card(
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF102A43), Color(0xFF243B53)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.qr_code_scanner, size: 18, color: Color(0xFF0088CC)),
+                              SizedBox(width: 6),
+                              Text('扫码识读', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  child: const Column(
-                    children: [
-                      Icon(Icons.qr_code_scanner, size: 48, color: Color(0xFF0088CC)),
-                      SizedBox(height: 12),
-                      Text('智能离线扫描识读', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                      SizedBox(height: 4),
-                      Text('秒级解析物理刻码与配件三防标签', style: TextStyle(fontSize: 11, color: Colors.white70)),
-                    ],
+                  const SizedBox(width: 8),
+                  // 同步按钮
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SyncScreen(isOnline: isOnline),
+                          ),
+                        ).then((_) => _loadLocalData());
+                      },
+                      child: Card(
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: const Color(0xFF131722),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  const Icon(Icons.sync_alt, size: 18, color: Color(0xFFD4AF37)),
+                                  if (pendingSyncCount > 0)
+                                    Positioned(
+                                      right: -6,
+                                      top: -6,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                                        child: Text(
+                                          '$pendingSyncCount',
+                                          style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(width: 6),
+                              const Text('近场同步', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
+                ],
+              ),
+            ),
+            
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            
+            // 2. 列表标题
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 8.0),
+                child: Text(
+                  '本地已下载同步资产预览',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54),
                 ),
               ),
             ),
-            const SizedBox(height: 20),
             
-            // 2. 近场数据同步卡片
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SyncScreen(isOnline: isOnline),
-                  ),
-                ).then((_) => _loadLocalData());
-              },
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Row(
-                    children: [
-                      Stack(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.04),
-                              shape: BoxShape.circle,
+            // 3. Sliver 列表数据
+            toolsList.isEmpty
+                ? const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40.0),
+                      child: Center(
+                        child: Text(
+                          '无本地缓存资产数据，请进行一次局域网同步',
+                          style: TextStyle(fontSize: 12, color: Colors.white30),
+                        ),
+                      ),
+                    ),
+                  )
+                : SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final item = toolsList[index];
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8.0),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            leading: const Icon(Icons.build, size: 20, color: Color(0xFF0088CC)),
+                            title: Text(
+                              '${item['code']} (${item['name']})',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                             ),
-                            child: const Icon(Icons.sync_alt, size: 28, color: Color(0xFFD4AF37)),
-                          ),
-                          if (pendingSyncCount > 0)
-                            Positioned(
-                              right: 0,
-                              top: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                ),
-                                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                                child: Text(
-                                  '$pendingSyncCount',
-                                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                                  textAlign: TextAlign.center,
+                            subtitle: Text(
+                              '位置: ${item['location']} | 寿命: ${item['use_count']}/${item['lifespan_limit']}次',
+                              style: const TextStyle(fontSize: 11, color: Colors.white54),
+                            ),
+                            onTap: () => _onAssetItemClicked('${item['code']}'),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: item['status'] == '在库'
+                                    ? Colors.green.withValues(alpha: 0.1)
+                                    : Colors.amber.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                item['status'],
+                                style: TextStyle(
+                                  color: item['status'] == '在库' ? Colors.green : Colors.amber,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                      const SizedBox(width: 16),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('局域网近场同步', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                            SizedBox(height: 2),
-                            Text('回库一键对齐与冲突校验合并', style: TextStyle(fontSize: 11, color: Colors.white70)),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white30),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-            
-            // 3. 本地在库字典列表清单 (预览)
-            const Text(
-              '本地已下载同步资产预览',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white54),
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: toolsList.isEmpty
-                ? const Center(child: Text('无本地缓存资产数据，请进行一次局域网同步', style: TextStyle(fontSize: 12, color: Colors.white30)))
-                : ListView.builder(
-                    itemCount: toolsList.length,
-                    itemBuilder: (context, index) {
-                      final item = toolsList[index];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.build, size: 20, color: Color(0xFF0088CC)),
-                        title: Text('${item['code']} (${item['name']})', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                        subtitle: Text('位置: ${item['location']} | 寿命: ${item['use_count']}/${item['lifespan_limit']}次', style: const TextStyle(fontSize: 11, color: Colors.white54)),
-                        onTap: () => _onBarcodeScanned('${item['code']}'),
-                        trailing: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: item['status'] == '在库' ? Colors.green.withValues(alpha: 0.1) : Colors.amber.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Text(
-                            item['status'],
-                            style: TextStyle(color: item['status'] == '在库' ? Colors.green : Colors.amber, fontSize: 10, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                      childCount: toolsList.length,
+                    ),
                   ),
-            ),
           ],
         ),
       ),

@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../db/local_db.dart';
 import 'maintenance_screen.dart';
 
 class DetailScreen extends StatefulWidget {
   final String barcode;
   final bool isOnline;
+  final bool isReadOnly;
 
-  const DetailScreen({super.key, required this.barcode, required this.isOnline});
+  const DetailScreen({
+    super.key,
+    required this.barcode,
+    required this.isOnline,
+    this.isReadOnly = false,
+  });
 
   @override
   State<DetailScreen> createState() => _DetailScreenState();
@@ -107,8 +115,8 @@ class _DetailScreenState extends State<DetailScreen> {
     await LocalDatabase.instance.insertLocalLog(log);
     
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本地领用出库成功对齐')));
-      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本地领用出库记录成功')));
+      await _attemptAutoSync();
     }
   }
 
@@ -145,8 +153,128 @@ class _DetailScreenState extends State<DetailScreen> {
     await LocalDatabase.instance.insertLocalLog(log);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('地点离线调拨成功')));
-      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本地工况变更记录成功')));
+      await _attemptAutoSync();
+    }
+  }
+
+  // 3. 局域网静默自动同步
+  Future<void> _attemptAutoSync() async {
+    if (!widget.isOnline) {
+      _showOfflineTip();
+      return;
+    }
+
+    try {
+      final logs = await LocalDatabase.instance.getLocalLogs();
+      if (logs.isEmpty) {
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+
+      final List<Map<String, dynamic>> logsPayload = [];
+      for (var l in logs) {
+        logsPayload.add({
+          'timestamp': l['timestamp'],
+          'time_str': l['time_str'],
+          'type': l['type'],
+          'tool_code': l['tool_code'],
+          'operator': l['operator'],
+          'detail': jsonDecode(l['detail'])
+        });
+      }
+
+      final currentUuid = await LocalDatabase.instance.getSetting('terminal_uuid') ?? 'terminal-handheld-001';
+      final body = {
+        'terminal_uuid': currentUuid,
+        'logs': logsPayload
+      };
+
+      final serverUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.120.107:8000';
+      final cleanBase = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
+      final cleanUrl = cleanBase.endsWith('/sync') ? cleanBase : '$cleanBase/sync';
+
+      final response = await http.post(
+        Uri.parse(cleanUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 4));
+
+      if (response.statusCode == 200) {
+        final resData = jsonDecode(response.body);
+        
+        // 转换最新工具数据
+        final List<Map<String, dynamic>> tools = [];
+        for (var t in resData['updated_tools']) {
+          tools.add({
+            'code': t['code'],
+            'name': t['name'],
+            'model': t['model'],
+            'status': t['status'],
+            'use_count': t['use_count'],
+            'lifespan_limit': t['lifespan_limit'],
+            'location': t['location'],
+            'operator': t['operator'],
+            'last_update_time': t['last_update_time'],
+            'checkout_time': t['checkout_time'],
+          });
+        }
+
+        // 转换最新配件数据
+        final List<Map<String, dynamic>> accessories = [];
+        for (var a in resData['updated_accessories']) {
+          accessories.add({
+            'barcode': a['barcode'],
+            'name': a['name'],
+            'spec': a['spec'],
+            'unit': a['unit'],
+            'safety_stock': a['safety_stock'],
+            'current_stock': a['current_stock'],
+          });
+        }
+
+        // 下发字典对齐
+        final Map<String, List<String>> dicts = {
+          'wellbore': List<String>.from(resData['updated_dicts']?['wellbores'] ?? ['川科1井', '深地塔科1井']),
+          'operator': List<String>.from(resData['updated_dicts']?['operators'] ?? ['张建国', '李志刚']),
+          'team': List<String>.from(resData['updated_dicts']?['teams'] ?? ['川庆一队']),
+        };
+
+        await LocalDatabase.instance.performSyncAlignment(tools, accessories, dicts);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('⚡ 局域网同步成功：操作已实时上传更新至库房端！'), backgroundColor: Colors.green),
+          );
+          Navigator.pop(context);
+        }
+      } else {
+        _showOfflineTip();
+      }
+    } catch (_) {
+      _showOfflineTip();
+    }
+  }
+
+  void _showOfflineTip() {
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('🔌 离线状态记录成功'),
+          content: const Text('当前处于离线状态或网络异常。\n\n操作已安全写入本地。请在回到局域网环境后，前往首页点击「同步」更新库房中枢！'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // 关掉弹窗
+                Navigator.pop(context); // 返回上一页
+              },
+              child: const Text('我知道了'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -303,127 +431,159 @@ class _DetailScreenState extends State<DetailScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
-              // 出库领用 / 维保归库表单域
-              if (toolData!['status'] == '在库' && !isMax) ...[
-                const Text('🚀 领用出库登记', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37))),
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.04),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white12),
-                  ),
+              // 设备基础技术参数 (T3 预留 Mock 数据展示)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('责任领用人：$selectedOperator', style: const TextStyle(color: Colors.white, fontSize: 13)),
-                      const SizedBox(height: 6),
-                      Text('所属作业队：$selectedTeam', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                      const Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: Color(0xFF0088CC)),
+                          SizedBox(width: 6),
+                          Text('设备基础技术参数', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0088CC))),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildRow('生产厂家', '中油油气成套设备厂 (模拟)'),
+                      const Divider(height: 14),
+                      _buildRow('出厂日期', '2025-10-18 (模拟)'),
+                      const Divider(height: 14),
+                      _buildRow('额定耐压', '105 MPa (模拟)'),
+                      const Divider(height: 14),
+                      _buildRow('额定耐温', '177 ℃ (模拟)'),
+                      const Divider(height: 14),
+                      _buildRow('连接扣型', '3-1/2 REG (模拟)'),
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  menuMaxHeight: 320,
-                  initialValue: selectedWellbore,
-                  decoration: const InputDecoration(labelText: '目标作业井号'),
-                  items: wellbores.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
-                  onChanged: (val) => setState(() => selectedWellbore = val),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Text('预计归还期限：', style: TextStyle(fontSize: 12, color: Colors.white70)),
-                    Expanded(
-                      child: Slider(
-                        value: returnDays.toDouble(),
-                        min: 7,
-                        max: 90,
-                        divisions: 83,
-                        label: '$returnDays 天',
-                        activeColor: const Color(0xFF0088CC),
-                        inactiveColor: Colors.white12,
-                        onChanged: (val) => setState(() => returnDays = val.toInt()),
-                      ),
-                    ),
-                    Text('$returnDays 天', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFD4AF37), fontSize: 13)),
-                  ],
-                ),
-                const SizedBox(height: 15),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _handleCheckOut,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                    ),
-                    child: const Text('确认领用出库', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
+              ),
+              const SizedBox(height: 20),
 
-              if (toolData!['status'] == '离库' || toolData!['status'] == '地点变更') ...[
-                // 地点变更
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
+              // 出库领用 / 维保归库表单域 (如果为只读模式则完全隐藏)
+              if (!widget.isReadOnly) ...[
+                if (toolData!['status'] == '在库' && !isMax) ...[
+                  const Text('🚀 领用出库登记', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37))),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white12),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('📍 现场工况井号变更', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0088CC))),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                menuMaxHeight: 320,
-                                initialValue: selectedWellbore,
-                                decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 10)),
-                                items: wellbores.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
-                                onChanged: (val) => setState(() => selectedWellbore = val),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: _handleChangeLocation,
-                              child: const Text('变更'),
-                            ),
-                          ],
-                        ),
+                        Text('责任领用人：$selectedOperator', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        const SizedBox(height: 6),
+                        Text('所属作业队：$selectedTeam', style: const TextStyle(color: Colors.white, fontSize: 13)),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 15),
-                
-                // 保养维保
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => MaintenanceScreen(
-                            toolCode: widget.barcode,
-                          ),
-                        ),
-                      );
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD4AF37),
-                      foregroundColor: Colors.black,
-                    ),
-                    child: const Text('进入归库保养与配件核销', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    menuMaxHeight: 320,
+                    initialValue: selectedWellbore,
+                    decoration: const InputDecoration(labelText: '目标作业井号'),
+                    items: wellbores.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
+                    onChanged: (val) => setState(() => selectedWellbore = val),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Text('预计归还期限：', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                      Expanded(
+                        child: Slider(
+                          value: returnDays.toDouble(),
+                          min: 7,
+                          max: 90,
+                          divisions: 83,
+                          label: '$returnDays 天',
+                          activeColor: const Color(0xFF0088CC),
+                          inactiveColor: Colors.white12,
+                          onChanged: (val) => setState(() => returnDays = val.toInt()),
+                        ),
+                      ),
+                      Text('$returnDays 天', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFD4AF37), fontSize: 13)),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _handleCheckOut,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
+                      child: const Text('确认领用出库', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+
+                if (toolData!['status'] == '离库' || toolData!['status'] == '地点变更') ...[
+                  // 地点变更
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('📍 现场工况井号变更', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0088CC))),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  menuMaxHeight: 320,
+                                  initialValue: selectedWellbore,
+                                  decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 10)),
+                                  items: wellbores.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
+                                  onChanged: (val) => setState(() => selectedWellbore = val),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: _handleChangeLocation,
+                                child: const Text('变更'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  
+                  // 保养维保
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => MaintenanceScreen(
+                              toolCode: widget.barcode,
+                            ),
+                          ),
+                        );
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD4AF37),
+                        foregroundColor: Colors.black,
+                      ),
+                      child: const Text('进入归库保养与配件核销', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
