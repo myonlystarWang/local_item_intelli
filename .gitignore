@@ -33,3 +33,16 @@ Thumbs.db
 *.tmp
 *.log
 proj/.trae/
+
+# project info
+/*.png
+/*.xlsx
+/*.csv
+/*.docx
+/*.pptx
+/*.doc
+/*.pdf
+/*.txt
+/pdf_images
+/slide-deck
+/投标
