@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Box, Document, Monitor, Setting } from '@element-plus/icons-vue'
+import { Box, Document, Monitor, Setting, ArrowDown, SwitchButton, Cpu } from '@element-plus/icons-vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
 const activeMenu = ref('/dashboard')
+const currentUser = ref<{ id: number; username: string; role: string } | null>(null)
 
 // 监听路由改变高亮菜单
 watch(
@@ -20,8 +22,45 @@ watch(
   { immediate: true }
 )
 
+const loadUser = () => {
+  const userStr = localStorage.getItem('user')
+  if (userStr) {
+    try {
+      currentUser.value = JSON.parse(userStr)
+    } catch {
+      currentUser.value = null
+    }
+  } else {
+    currentUser.value = null
+  }
+}
+
+watch(
+  () => route.path,
+  () => {
+    loadUser()
+  },
+  { immediate: true }
+)
+
 const handleSelect = (key: string) => {
   router.push(key)
+}
+
+const handleUserCommand = (command: string) => {
+  if (command === 'logout') {
+    ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }).then(() => {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('user')
+      currentUser.value = null
+      ElMessage.success('登出成功')
+      router.push('/login')
+    }).catch(() => {})
+  }
 }
 
 const pageTitle = computed(() => {
@@ -29,14 +68,15 @@ const pageTitle = computed(() => {
     '/dashboard': '监控驾驶大盘',
     '/lifecycle': '寿命生命周期档案',
     '/accessories': '配件库存台账',
-    '/dictionaries': '基础数据维护'
+    '/dictionaries': '基础数据维护',
+    '/devices': '终端设备授权'
   }
   return titles[route.path] || '监控驾驶大盘'
 })
 </script>
 
 <template>
-  <el-container class="app-container">
+  <el-container class="app-container" v-if="!route.meta.plainLayout">
     <el-aside width="240px" class="aside-menu">
       <div class="logo-area">
         <div class="logo-icon"></div>
@@ -67,6 +107,10 @@ const pageTitle = computed(() => {
           <el-icon><Setting /></el-icon>
           <span>基础数据维护</span>
         </el-menu-item>
+        <el-menu-item index="/devices">
+          <el-icon><Cpu /></el-icon>
+          <span>终端设备授权</span>
+        </el-menu-item>
       </el-menu>
       
       <div class="aside-footer">
@@ -84,6 +128,26 @@ const pageTitle = computed(() => {
             <span class="pulse-dot"></span>
             局域网节点: <span class="ip-addr">127.0.0.1:8000</span>
           </div>
+
+          <div class="user-profile" v-if="currentUser">
+            <el-dropdown trigger="click" @command="handleUserCommand">
+              <span class="el-dropdown-link">
+                <el-avatar :size="28" class="user-avatar">
+                  {{ currentUser.username.substring(0, 2).toUpperCase() }}
+                </el-avatar>
+                <span class="username">{{ currentUser.username }}</span>
+                <el-icon class="el-icon--right"><arrow-down /></el-icon>
+              </span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="logout">
+                    <el-icon><SwitchButton /></el-icon>
+                    <span>退出登录</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </div>
       </el-header>
       
@@ -96,6 +160,14 @@ const pageTitle = computed(() => {
       </el-main>
     </el-container>
   </el-container>
+
+  <div class="plain-container" v-else>
+    <router-view v-slot="{ Component }">
+      <transition name="fade-transform" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
+  </div>
 </template>
 
 <style>
@@ -174,6 +246,7 @@ body {
   letter-spacing: 0.5px;
   background: linear-gradient(to right, #ffffff, #8b949e);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -258,10 +331,50 @@ body {
   font-family: monospace;
 }
 
+/* 用户状态 */
+.user-profile {
+  margin-left: 16px;
+}
+
+.el-dropdown-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #c9d1d9;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.el-dropdown-link:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+.user-avatar {
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%) !important;
+  color: #0b0f17 !important;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.username {
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .app-main {
   background-color: #0d1117;
   padding: 30px;
   overflow-y: auto;
+}
+
+.plain-container {
+  width: 100vw;
+  height: 100vh;
+  background-color: #0b0f17;
+  overflow: hidden;
 }
 
 /* 页面切换动画 */

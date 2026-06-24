@@ -1,7 +1,27 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from database import Base
+
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(30), nullable=False, default="admin")
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+class AuthorizedDevice(Base):
+    __tablename__ = "authorized_devices"
+
+    uuid = Column(String(100), primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    registered_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    last_sync_at = Column(DateTime, nullable=True)
+    remark = Column(Text, nullable=True)
 
 class Tool(Base):
     __tablename__ = "tools"

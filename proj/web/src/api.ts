@@ -1,6 +1,70 @@
 import axios from 'axios'
+import { ElMessage } from 'element-plus'
 
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/$/, '')
+
+// 请求拦截器
+axios.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// 响应拦截器
+axios.interceptors.response.use(
+  (response) => {
+    return response
+  },
+  (error) => {
+    const status = error.response?.status
+    const detail = error.response?.data?.detail
+    const msg = Array.isArray(detail) ? detail.map(d => d.msg).join(', ') : (detail || error.message || '网络连接失败，请检查网络')
+
+    if (status === 401) {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('user')
+      ElMessage({
+        message: '登录已过期或未登录，请重新登录',
+        type: 'error',
+        duration: 3000
+      })
+      window.location.hash = '#/login'
+    } else {
+      ElMessage({
+        message: msg,
+        type: 'error',
+        duration: 3000
+      })
+    }
+    return Promise.reject(error)
+  }
+)
+
+export interface AdminLoginRequest {
+  username: string
+  password: string
+}
+
+export interface AdminUserResponse {
+  id: number
+  username: string
+  role: string
+}
+
+export interface TokenResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+  user: AdminUserResponse
+}
+
 
 export interface Tool {
   code: string
@@ -50,6 +114,15 @@ export interface DictionaryItem {
   dict_value: string
 }
 
+export interface AuthorizedDevice {
+  uuid: string
+  name: string
+  is_active: boolean
+  registered_at: string
+  last_sync_at?: string
+  remark?: string
+}
+
 export const MOCK_DATA = {
   wellbores: ["川科1井", "深地塔科1井", "威页23-4井", "大庆102井"],
   operators: ["张建国", "李志刚", "王超", "赵强"],
@@ -95,6 +168,11 @@ export const MOCK_DATA = {
 const localState = { ...MOCK_DATA }
 
 export const api = {
+  async login(credentials: AdminLoginRequest) {
+    const res = await axios.post(`${API_BASE}/auth/login`, credentials)
+    return res.data as TokenResponse
+  },
+
   async getDictionaries() {
     try {
       const res = await axios.get(`${API_BASE}/dictionaries`)
@@ -109,14 +187,7 @@ export const api = {
   },
 
   async addWellbore(wellbore: string) {
-    try {
-      await axios.post(`${API_BASE}/dictionaries/wellbores`, { dict_type: 'wellbore', dict_value: wellbore })
-    } catch {
-      console.warn("API Error: addWellbore. Fallback to mock.")
-      if (!localState.wellbores.includes(wellbore)) {
-        localState.wellbores.push(wellbore)
-      }
-    }
+    await axios.post(`${API_BASE}/dictionaries/wellbores`, { dict_type: 'wellbore', dict_value: wellbore })
   },
 
   async getDictionaryItems() {
@@ -134,38 +205,17 @@ export const api = {
   },
 
   async createDictionaryItem(item: { dict_type: DictionaryItem['dict_type']; dict_value: string }) {
-    try {
-      const res = await axios.post(`${API_BASE}/dictionaries/items`, item)
-      return res.data as DictionaryItem
-    } catch {
-      console.warn("API Error: createDictionaryItem. Fallback to mock.")
-      const exists = localState.dictionaryItems.some(d => d.dict_type === item.dict_type && d.dict_value === item.dict_value)
-      if (exists) return localState.dictionaryItems.find(d => d.dict_type === item.dict_type && d.dict_value === item.dict_value)
-      const created = { id: Date.now(), ...item } as DictionaryItem
-      localState.dictionaryItems.push(created)
-      return created
-    }
+    const res = await axios.post(`${API_BASE}/dictionaries/items`, item)
+    return res.data as DictionaryItem
   },
 
   async updateDictionaryItem(id: number, dictValue: string) {
-    try {
-      const res = await axios.put(`${API_BASE}/dictionaries/items/${id}`, { dict_value: dictValue })
-      return res.data as DictionaryItem
-    } catch {
-      console.warn("API Error: updateDictionaryItem. Fallback to mock.")
-      const target = localState.dictionaryItems.find(d => d.id === id)
-      if (target) target.dict_value = dictValue
-      return target
-    }
+    const res = await axios.put(`${API_BASE}/dictionaries/items/${id}`, { dict_value: dictValue })
+    return res.data as DictionaryItem
   },
 
   async deleteDictionaryItem(id: number) {
-    try {
-      await axios.delete(`${API_BASE}/dictionaries/items/${id}`)
-    } catch {
-      console.warn("API Error: deleteDictionaryItem. Fallback to mock.")
-    }
-    localState.dictionaryItems = localState.dictionaryItems.filter(d => d.id !== id)
+    await axios.delete(`${API_BASE}/dictionaries/items/${id}`)
   },
 
   async getTools() {
@@ -186,29 +236,8 @@ export const api = {
   },
 
   async createTool(tool: { code: string; name: string; model: string; lifespan_limit: number; location: string }) {
-    try {
-      const res = await axios.post(`${API_BASE}/tools`, tool)
-      return res.data
-    } catch {
-      console.warn("API Error: createTool. Fallback to mock.")
-      const newTool: Tool = {
-        ...tool,
-        status: '在库',
-        use_count: 0,
-        operator: '库管员',
-        last_update_time: new Date().toLocaleString()
-      }
-      localState.tools.unshift(newTool)
-      localState.histories.unshift({
-        id: localState.histories.length + 1,
-        tool_code: tool.code,
-        timestamp: new Date().toLocaleString(),
-        type: '建档入库',
-        detail: `精密工具手动新购建档，设定初始核定寿命水位上限为 ${tool.lifespan_limit} 次。`,
-        operator: '库管员'
-      })
-      return newTool
-    }
+    const res = await axios.post(`${API_BASE}/tools`, tool)
+    return res.data
   },
 
   async getAccessories() {
@@ -223,31 +252,13 @@ export const api = {
   },
 
   async createAccessory(acc: { barcode: string; name: string; spec: string; unit: string; safety_stock: number; current_stock: number }) {
-    try {
-      const res = await axios.post(`${API_BASE}/accessories`, acc)
-      return res.data
-    } catch {
-      console.warn("API Error: createAccessory. Fallback to mock.")
-      const newAcc: Accessory = {
-        ...acc
-      }
-      localState.accessories.unshift(newAcc)
-      return newAcc
-    }
+    const res = await axios.post(`${API_BASE}/accessories`, acc)
+    return res.data
   },
 
   async adjustAccessoryStock(barcode: string, qty: number) {
-    try {
-      const res = await axios.post(`${API_BASE}/accessories/adjust`, { barcode, qty })
-      return res.data
-    } catch {
-      console.warn("API Error: adjustAccessoryStock. Fallback to mock.")
-      const item = localState.accessories.find(a => a.barcode === barcode)
-      if (item) {
-        item.current_stock += qty
-      }
-      return { message: "Mock 补货成功" }
-    }
+    const res = await axios.post(`${API_BASE}/accessories/adjust`, { barcode, qty })
+    return res.data
   },
 
   async getToolHistories(toolCode: string) {
@@ -290,5 +301,25 @@ export const api = {
       console.warn("API Error: getSyncLogs. Fallback to mock.")
       return localState.syncLogs
     }
+  },
+
+  async getDevices() {
+    const res = await axios.get(`${API_BASE}/devices`)
+    return res.data as AuthorizedDevice[]
+  },
+
+  async createDevice(device: { uuid: string; name: string; remark?: string }) {
+    const res = await axios.post(`${API_BASE}/devices`, device)
+    return res.data as AuthorizedDevice
+  },
+
+  async updateDevice(uuid: string, updates: { name?: string; is_active?: boolean; remark?: string }) {
+    const res = await axios.patch(`${API_BASE}/devices/${uuid}`, updates)
+    return res.data as AuthorizedDevice
+  },
+
+  async deleteDevice(uuid: string) {
+    const res = await axios.delete(`${API_BASE}/devices/${uuid}`)
+    return res.data
   }
 }

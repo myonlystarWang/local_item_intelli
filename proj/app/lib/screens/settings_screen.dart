@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/api_config.dart';
 import '../db/local_db.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -39,7 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // 加载当前设置
     final currentName = await LocalDatabase.instance.getSetting('operator_name');
     final currentTeam = await LocalDatabase.instance.getSetting('operator_team');
-    final currentUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.120.107:8000';
+    final currentUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? ApiConfig.defaultApiBaseUrl;
     final currentUuid = await LocalDatabase.instance.getSetting('terminal_uuid') ?? 'terminal-handheld-001';
 
     // 进行去重处理，防止后端返回重复字典项导致 Dropdown 报 key 重复崩溃
@@ -75,10 +76,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    final url = _urlController.text.trim();
+    final rawUrl = _urlController.text.trim();
+    final url = ApiConfig.normalizeBaseUrl(rawUrl);
     final uuid = _uuidController.text.trim();
 
-    if (url.isEmpty || uuid.isEmpty) {
+    if (rawUrl.isEmpty || uuid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('服务器地址或终端 UUID 不能为空')),
       );
@@ -174,7 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                       decoration: const InputDecoration(
                         labelText: '中枢服务器 API 地址',
-                        hintText: 'http://192.168.120.107:8000',
+                        hintText: ApiConfig.defaultApiBaseUrl,
                       ),
                       keyboardType: TextInputType.url,
                     ),

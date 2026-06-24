@@ -4,6 +4,7 @@ import 'dart:convert';
 
 class LocalDatabase {
   static final LocalDatabase instance = LocalDatabase._init();
+  static const int databaseVersion = 2;
   static Database? _database;
 
   LocalDatabase._init();
@@ -20,13 +21,13 @@ class LocalDatabase {
 
     return await openDatabase(
       path,
-      version: 2,
-      onCreate: _createDB,
-      onUpgrade: _onUpgrade,
+      version: databaseVersion,
+      onCreate: createSchema,
+      onUpgrade: migrateSchema,
     );
   }
 
-  Future _createDB(Database db, int version) async {
+  static Future<void> createSchema(Database db, int version) async {
     // 1. 精密工具本地 SQLite 表 (对应 PostgreSQL 结构)
     await db.execute('''
       CREATE TABLE tools (
@@ -87,7 +88,7 @@ class LocalDatabase {
     ''');
   }
 
-  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+  static Future<void> migrateSchema(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('''
         CREATE TABLE settings (

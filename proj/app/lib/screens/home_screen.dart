@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import '../db/local_db.dart';
 import 'detail_screen.dart';
 import 'sync_screen.dart';
@@ -46,9 +47,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _checkConnectivity() async {
-    final serverUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.120.107:8000';
+    final serverUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? ApiConfig.defaultApiBaseUrl;
     try {
-      final response = await http.get(Uri.parse('$serverUrl/tools')).timeout(const Duration(seconds: 2));
+      final response = await http.get(ApiConfig.endpoint(serverUrl, '/tools')).timeout(const Duration(seconds: 2));
       final newStatus = response.statusCode == 200;
       if (isOnline != newStatus) {
         setState(() {

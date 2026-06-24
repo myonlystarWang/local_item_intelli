@@ -18,7 +18,10 @@ Thumbs.db
 **/venv/
 **/.venv/
 **/*.db
+**/*.sqlite
+**/*.sqlite3
 **/*.local
+**/.env
 
 # Flutter/Dart build and tool folders
 **/build/
@@ -32,6 +35,7 @@ Thumbs.db
 # Temp files
 *.tmp
 *.log
+**/logs/
 proj/.trae/
 
 # project info

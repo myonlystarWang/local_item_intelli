@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import '../db/local_db.dart';
 import 'maintenance_screen.dart';
 
@@ -187,15 +188,16 @@ class _DetailScreenState extends State<DetailScreen> {
       final currentUuid = await LocalDatabase.instance.getSetting('terminal_uuid') ?? 'terminal-handheld-001';
       final body = {
         'terminal_uuid': currentUuid,
+        'app_version': ApiConfig.appVersion,
+        'schema_version': ApiConfig.schemaVersion,
         'logs': logsPayload
       };
 
-      final serverUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? 'http://192.168.120.107:8000';
-      final cleanBase = serverUrl.endsWith('/') ? serverUrl.substring(0, serverUrl.length - 1) : serverUrl;
-      final cleanUrl = cleanBase.endsWith('/sync') ? cleanBase : '$cleanBase/sync';
+      final serverUrl = await LocalDatabase.instance.getSetting('sync_server_url') ?? ApiConfig.defaultApiBaseUrl;
+      final url = ApiConfig.endpoint(serverUrl, '/sync');
 
       final response = await http.post(
-        Uri.parse(cleanUrl),
+        url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 4));

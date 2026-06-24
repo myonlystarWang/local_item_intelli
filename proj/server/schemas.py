@@ -3,6 +3,51 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 # ─────────────────────────────────────────────────────────────
+# 管理员认证相关 Schema
+# ─────────────────────────────────────────────────────────────
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AdminUserResponse(BaseModel):
+    id: int
+    username: str
+    role: str
+
+    class Config:
+        from_attributes = True
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: AdminUserResponse
+
+# ─────────────────────────────────────────────────────────────
+# 授权终端设备相关 Schema
+# ─────────────────────────────────────────────────────────────
+class AuthorizedDeviceCreate(BaseModel):
+    uuid: str
+    name: str
+    remark: Optional[str] = None
+
+class AuthorizedDeviceUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+    remark: Optional[str] = None
+
+class AuthorizedDeviceResponse(BaseModel):
+    uuid: str
+    name: str
+    is_active: bool
+    registered_at: datetime
+    last_sync_at: Optional[datetime] = None
+    remark: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+# ─────────────────────────────────────────────────────────────
 # 字典参数相关 Schema
 # ─────────────────────────────────────────────────────────────
 class DictionaryBase(BaseModel):
@@ -125,6 +170,8 @@ class SyncLogEntry(BaseModel):
 
 class SyncRequest(BaseModel):
     terminal_uuid: str
+    app_version: str = "0.0.0"
+    schema_version: int = 1
     logs: List[SyncLogEntry]
 
 class SyncLogResult(BaseModel):

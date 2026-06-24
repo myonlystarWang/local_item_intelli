@@ -1,36 +1,97 @@
 import os
+from pathlib import Path
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# 优先使用环境变量中的数据库连接，默认为 PostgreSQL 局域网服务
-SQLALCHEMY_DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://postgres:postgres@localhost:5432/item_intelli"
-)
 
-# 自动检测并降级：如果 PostgreSQL 连接不可用，则切换至本地 SQLite
-try:
-    if not SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
-        raise ValueError("Not PostgreSQL")
-        
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, 
-        pool_pre_ping=True, 
-        pool_size=10, 
-        max_overflow=20
+def _load_dotenv():
+    """Load proj/server/.env without overriding process environment variables."""
+    env_path = Path(__file__).with_name(".env")
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _create_sqlite_engine(database_url: str):
+    return create_engine(
+        database_url,
+        connect_args={"check_same_thread": False},
     )
-    # 测试连接是否可用
-    with engine.connect() as conn:
+
+
+def _create_postgresql_engine(database_url: str):
+    engine = create_engine(
+        database_url,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+    )
+    with engine.connect():
         pass
-    print(f"成功连接到 PostgreSQL 数据库: {SQLALCHEMY_DATABASE_URL}")
-except Exception as e:
-    print(f"PostgreSQL 数据库连接不可用 ({e})。自动降级切换至本地 SQLite 数据库...")
+    return engine
+
+
+_load_dotenv()
+
+ALLOW_SQLITE_FALLBACK = _env_bool("ALLOW_SQLITE_FALLBACK", False)
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not SQLALCHEMY_DATABASE_URL:
+    if not ALLOW_SQLITE_FALLBACK:
+        raise RuntimeError(
+            "未设置 DATABASE_URL，且 ALLOW_SQLITE_FALLBACK 未启用；"
+            "生产环境必须显式配置 PostgreSQL 数据库连接。"
+        )
     SQLALCHEMY_DATABASE_URL = "sqlite:///./item_intelli.db"
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL,
-        connect_args={"check_same_thread": False}  # SQLite 专有参数，允许多线程并发连接
-    )
+    print("未设置 DATABASE_URL，已按 ALLOW_SQLITE_FALLBACK=true 使用本地 SQLite。")
+    engine = _create_sqlite_engine(SQLALCHEMY_DATABASE_URL)
+else:
+    normalized_database_url = SQLALCHEMY_DATABASE_URL.lower()
+    is_postgresql = normalized_database_url.startswith("postgresql")
+    is_sqlite = normalized_database_url.startswith("sqlite")
+
+    if is_sqlite:
+        if not ALLOW_SQLITE_FALLBACK:
+            raise RuntimeError(
+                "检测到 SQLite DATABASE_URL，但 ALLOW_SQLITE_FALLBACK 未启用；"
+                "生产环境禁止使用 SQLite。"
+            )
+        print("已按 ALLOW_SQLITE_FALLBACK=true 使用显式配置的 SQLite 数据库。")
+        engine = _create_sqlite_engine(SQLALCHEMY_DATABASE_URL)
+    elif is_postgresql:
+        try:
+            engine = _create_postgresql_engine(SQLALCHEMY_DATABASE_URL)
+            print("成功连接到 PostgreSQL 数据库。")
+        except Exception as exc:
+            if not ALLOW_SQLITE_FALLBACK:
+                raise RuntimeError(
+                    "PostgreSQL 数据库连接不可用，生产环境禁止自动降级 SQLite。"
+                ) from exc
+
+            print(f"PostgreSQL 数据库连接不可用 ({exc})，已按 ALLOW_SQLITE_FALLBACK=true 降级到本地 SQLite。")
+            SQLALCHEMY_DATABASE_URL = "sqlite:///./item_intelli.db"
+            engine = _create_sqlite_engine(SQLALCHEMY_DATABASE_URL)
+    else:
+        raise RuntimeError("DATABASE_URL 仅支持 postgresql 或显式启用 fallback 后的 sqlite。")
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
